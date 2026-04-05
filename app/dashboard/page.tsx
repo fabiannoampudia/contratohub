@@ -156,7 +156,7 @@ export default function DashboardPage() {
               <BarChart data={bySupplierValue} layout="vertical" margin={{ left: 10, right: 20 }}>
                 <XAxis type="number" tickFormatter={v => fmtCur(v)} style={{ fontSize: 10 }} />
                 <YAxis type="category" dataKey="name" width={120} style={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => fmtCur(v)} labelStyle={{ fontWeight: 600 }} />
+                <Tooltip formatter={(v: number | string) => fmtCur(Number(v))} labelStyle={{ fontWeight: 600 }} />
                 <Bar dataKey="value" fill="#534AB7" radius={[0, 4, 4, 0]} barSize={18} />
               </BarChart>
             </ResponsiveContainer>
