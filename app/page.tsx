@@ -61,7 +61,35 @@ function PageContent(){
   useEffect(()=>{loadData();},[]);
 
   function openNew(){setEditingId(null);setForm(EF);setShowForm(true);}
-  function openEdit(c:Contract){setEditingId(c.id);setForm({contractNumber:c.contractNumber,description:c.description,supplierId:c.supplierId,companyId:c.companyId,unitValue:c.unitValue?String(c.unitValue):"",totalValue:c.totalValue?String(c.totalValue):"",paymentFrequency:c.paymentFrequency||"",adjustmentType:c.adjustmentType||"",adjustmentMonth:c.adjustmentMonth?String(c.adjustmentMonth):"",adjustmentIndex:c.adjustmentIndex||"",startDate:fDI(c.startDate),endDate:fDI(c.endDate),noticePeriodDays:c.noticePeriodDays?String(c.noticePeriodDays):"",responsible:c.responsible||"",mapping:c.mapping||"",billingType:c.billingType||"",billingDetail:c.billingDetail||"",autoRenewal:c.autoRenewal||"",notes:c.notes||"",status:c.status});setShowForm(true);window.scrollTo({top:0,behavior:"smooth"});}
+  
+function openEdit(c:Contract){
+  setEditingId(c.id);
+  setForm({
+    contractNumber:c.contractNumber,
+    description:c.description,
+    supplierId:c.supplier.id,       // era c.supplierId
+    companyId:c.company.id,         // era c.companyId
+    unitValue:c.unitValue?String(c.unitValue):"",
+    totalValue:c.totalValue?String(c.totalValue):"",
+    paymentFrequency:c.paymentFrequency||"",
+    adjustmentType:c.adjustmentType||"",
+    adjustmentMonth:c.adjustmentMonth?String(c.adjustmentMonth):"",
+    adjustmentIndex:c.adjustmentIndex||"",
+    startDate:fDI(c.startDate),
+    endDate:fDI(c.endDate),
+    noticePeriodDays:c.noticePeriodDays?String(c.noticePeriodDays):"",
+    responsible:c.responsible||"",
+    mapping:c.mapping||"",
+    billingType:c.billingType||"",
+    billingDetail:c.billingDetail||"",
+    autoRenewal:c.autoRenewal||"",
+    notes:c.notes||"",
+    status:c.status
+  });
+  setShowForm(true);
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
   async function handleSubmit(e:React.FormEvent){e.preventDefault();setSaving(true);try{const url=editingId?`/api/contracts/${editingId}`:"/api/contracts";const method=editingId?"PATCH":"POST";const res=await fetch(url,{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(form)});if(!res.ok)throw new Error();setForm(EF);setShowForm(false);setEditingId(null);showToast(editingId?`Contrato ${form.contractNumber} atualizado`:`Contrato ${form.contractNumber} criado`);loadData();}catch{showToast("Erro ao salvar.","error");}finally{setSaving(false);}}
   async function handleDelete(id:string,n:string){if(!confirm(`Excluir contrato ${n}?\n\nEssa ação não pode ser desfeita.`))return;try{const res=await fetch(`/api/contracts/${id}`,{method:"DELETE"});if(!res.ok)throw new Error();showToast(`Contrato ${n} excluído`);loadData();}catch{showToast("Erro ao excluir.","error");}}
   function closeForm(){setShowForm(false);setEditingId(null);setForm(EF);}
