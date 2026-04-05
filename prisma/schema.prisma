@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Company {
+  id        String     @id @default(uuid())
+  name      String
+  cnpj      String     @unique
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  contracts Contract[]
+}
+
+model Supplier {
+  id                 String     @id @default(uuid())
+  legalName          String
+  tradeName          String?
+  cnpj               String     @unique
+  email              String?
+  phone              String?
+  commercialContact  String?
+  operationalContact String?
+  status             String     @default("Ativo")
+  criticality        String     @default("Média")
+  notes              String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  contracts          Contract[]
+}
+
+model Contract {
+  id                 String    @id @default(uuid())
+  contractNumber     String
+  description        String
+  supplierId         String
+  supplier           Supplier  @relation(fields: [supplierId], references: [id])
+  companyId          String
+  company            Company   @relation(fields: [companyId], references: [id])
+  unitValue          Float?
+  totalValue         Float?
+  paymentFrequency   String?
+  adjustmentType     String?
+  adjustmentMonth    Int?
+  adjustmentIndex    String?
+  startDate          DateTime
+  endDate            DateTime?
+  noticePeriodDays   Int?
+  status             String    @default("Novo")
+  responsible        String?
+  mapping            String?
+  billingType        String?
+  billingDetail      String?
+  autoRenewal        String?
+  notes              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  password     String
+  role         String   @default("Operador")
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
