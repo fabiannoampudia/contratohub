@@ -40,7 +40,7 @@ async function main() {
     create: {
       name: "Fabiano Ampudia",
       email: "fam@tf.com.br",
-      password: 1234,
+      password: "1234",
       role: "Admin",
     },
   });
