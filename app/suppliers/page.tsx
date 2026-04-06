@@ -110,6 +110,7 @@ function PageContent(){
           <div style={{display:"flex",gap:10,alignItems:"center"}}>
             <input placeholder="Buscar..." value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} style={{padding:"8px 14px",border:"1px solid #e0e2e7",borderRadius:8,fontSize:"13px",width:240,background:"#fff"}}/>
             <button onClick={exportExcel} disabled={sorted.length===0} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 14px",background:"#fff",color:"#1a1a2e",border:"1px solid #e0e2e7",borderRadius:8,cursor:"pointer",fontSize:"13px"}}><IDl/> Exportar</button>
+            <a href="/import" style={{display:"flex",alignItems:"center",gap:5,padding:"8px 14px",background:"#fff",color:"#1a1a2e",border:"1px solid #e0e2e7",borderRadius:8,cursor:"pointer",fontSize:"13px",textDecoration:"none"}}><IUpload/> Importar</a>
             <button onClick={showForm?closeForm:openNew} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 18px",background:showForm?"#6b7280":"#1a1a2e",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:"13px",fontWeight:500}}>{showForm?<><IX/> Cancelar</>:<><IPlus/> Novo fornecedor</>}</button>
           </div>
         </div>
