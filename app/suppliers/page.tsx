@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import Sidebar from "@/app/lib/Sidebar";
 
-import { AREAS } from "@/app/lib/constants";
+import { AREAS, maskCNPJ, validateCNPJ } from "@/app/lib/constants";
 
 type Supplier={id:string;legalName:string;tradeName:string|null;cnpj:string;email:string|null;phone:string|null;commercialContact:string|null;operationalContact:string|null;responsible:string|null;area:string|null;status:string;criticality:string;notes:string|null;_count:{contracts:number}};
 type Toast={message:string;type:"success"|"error"};type SortDir="asc"|"desc";
@@ -43,6 +43,7 @@ function PageContent(){
   const searchParams=useSearchParams();const[search,setSearch]=useState(searchParams.get("search")||"");
   const[toast,setToast]=useState<Toast|null>(null);const[sortCol,setSortCol]=useState<ColKey>("tradeName");const[sortDir,setSortDir]=useState<SortDir>("asc");const[page,setPage]=useState(1);
   const[filterNoContracts,setFilterNoContracts]=useState(false);
+  const[cnpjError,setCnpjError]=useState("");
 
   function showToast(m:string,t:"success"|"error"="success"){setToast({message:m,type:t});setTimeout(()=>setToast(null),4000);}
   async function loadData(){setLoading(true);const data=await fetch("/api/suppliers").then(r=>r.json());setSuppliers(data);setLoading(false);}
@@ -50,7 +51,9 @@ function PageContent(){
 
   function openNew(){setEditingId(null);setForm(EMPTY);setShowForm(true);}
   function openEdit(s:Supplier){setEditingId(s.id);setForm({legalName:s.legalName,tradeName:s.tradeName||"",cnpj:s.cnpj,email:s.email||"",phone:s.phone||"",commercialContact:s.commercialContact||"",operationalContact:s.operationalContact||"",responsible:s.responsible||"",area:s.area||"",status:s.status,criticality:s.criticality,notes:s.notes||""});setShowForm(true);window.scrollTo({top:0,behavior:"smooth"});}
-  async function handleSubmit(e:React.FormEvent){e.preventDefault();setSaving(true);try{const url=editingId?`/api/suppliers/${editingId}`:"/api/suppliers";const method=editingId?"PATCH":"POST";const res=await fetch(url,{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(form)});const data=await res.json();if(!res.ok)throw new Error(data.error||"Erro");setForm(EMPTY);setShowForm(false);setEditingId(null);showToast(editingId?`${form.tradeName||form.legalName} atualizado`:`${form.tradeName||form.legalName} cadastrado`);loadData();}catch(err:unknown){const msg=err instanceof Error?err.message:"Erro ao salvar";showToast(msg,"error");}finally{setSaving(false);}}
+  async function handleSubmit(e:React.FormEvent){e.preventDefault();
+    if(!validateCNPJ(form.cnpj)){setCnpjError("CNPJ inválido");showToast("CNPJ inválido. Verifique os dígitos.","error");return;}
+    setCnpjError("");setSaving(true);try{const url=editingId?`/api/suppliers/${editingId}`:"/api/suppliers";const method=editingId?"PATCH":"POST";const res=await fetch(url,{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(form)});const data=await res.json();if(!res.ok)throw new Error(data.error||"Erro");setForm(EMPTY);setShowForm(false);setEditingId(null);showToast(editingId?`${form.tradeName||form.legalName} atualizado`:`${form.tradeName||form.legalName} cadastrado`);loadData();}catch(err:unknown){const msg=err instanceof Error?err.message:"Erro ao salvar";showToast(msg,"error");}finally{setSaving(false);}}
   async function handleDelete(s:Supplier){if(!confirm(`Excluir ${s.tradeName||s.legalName}?\n\nEssa ação não pode ser desfeita.`))return;try{const res=await fetch(`/api/suppliers/${s.id}`,{method:"DELETE"});const data=await res.json();if(!res.ok)throw new Error(data.error||"Erro");showToast(`${s.tradeName||s.legalName} excluído`);loadData();}catch(err:unknown){const msg=err instanceof Error?err.message:"Erro ao excluir";showToast(msg,"error");}}
   function closeForm(){setShowForm(false);setEditingId(null);setForm(EMPTY);}
   function set(f:string,v:string){setForm(p=>({...p,[f]:v}));}
@@ -124,7 +127,7 @@ function PageContent(){
                 <G3>
                   <F label="Razão social" required v={form.legalName} set={v=>set("legalName",v)} ph="Razão social completa"/>
                   <F label="Nome fantasia" v={form.tradeName} set={v=>set("tradeName",v)} ph="Nome comercial"/>
-                  <F label="CNPJ" required v={form.cnpj} set={v=>set("cnpj",v)} ph="00.000.000/0001-00"/>
+                  <div><label style={fl}>CNPJ<span style={{color:"#E24B4A"}}> *</span></label><input required value={form.cnpj} onChange={e=>{const masked=maskCNPJ(e.target.value);set("cnpj",masked);if(cnpjError&&masked.replace(/\D/g,"").length===14)setCnpjError(validateCNPJ(masked)?"":"CNPJ inválido");}} onBlur={()=>{if(form.cnpj&&!validateCNPJ(form.cnpj))setCnpjError("CNPJ inválido");else setCnpjError("");}} style={{...fi,borderColor:cnpjError?"#E24B4A":"#e0e2e7"}} placeholder="00.000.000/0001-00" maxLength={18}/>{cnpjError&&<span style={{fontSize:"11px",color:"#E24B4A",marginTop:2,display:"block"}}>{cnpjError}</span>}</div>
                 </G3>
               </FormSection>
 
