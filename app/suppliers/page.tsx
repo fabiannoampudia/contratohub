@@ -5,16 +5,18 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import Sidebar from "@/app/lib/Sidebar";
 
-type Supplier={id:string;legalName:string;tradeName:string|null;cnpj:string;email:string|null;phone:string|null;commercialContact:string|null;operationalContact:string|null;status:string;criticality:string;notes:string|null;_count:{contracts:number}};
+import { AREAS } from "@/app/lib/constants";
+
+type Supplier={id:string;legalName:string;tradeName:string|null;cnpj:string;email:string|null;phone:string|null;commercialContact:string|null;operationalContact:string|null;responsible:string|null;area:string|null;status:string;criticality:string;notes:string|null;_count:{contracts:number}};
 type Toast={message:string;type:"success"|"error"};type SortDir="asc"|"desc";
-type ColKey="tradeName"|"legalName"|"cnpj"|"commercialContact"|"email"|"phone"|"contracts"|"criticality"|"status";
+type ColKey="tradeName"|"legalName"|"cnpj"|"responsible"|"area"|"phone"|"contracts"|"criticality"|"status";
 
 const PER_PAGE=10;const SO=["Ativo","Inativo","Bloqueado"];const CO=["Alta","Média","Baixa"];
 const SCC:Record<string,{bg:string;text:string}>={Ativo:{bg:"#E1F5EE",text:"#0F6E56"},Inativo:{bg:"#F1F3F5",text:"#6b7280"},Bloqueado:{bg:"#FAEEDA",text:"#854F0B"}};
 const CRC:Record<string,{bg:string;text:string}>={Alta:{bg:"#FCEBEB",text:"#A32D2D"},Média:{bg:"#FAEEDA",text:"#854F0B"},Baixa:{bg:"#E1F5EE",text:"#0F6E56"}};
-const EMPTY={legalName:"",tradeName:"",cnpj:"",email:"",phone:"",commercialContact:"",operationalContact:"",status:"Ativo",criticality:"Média",notes:""};
+const EMPTY={legalName:"",tradeName:"",cnpj:"",email:"",phone:"",commercialContact:"",operationalContact:"",responsible:"",area:"",status:"Ativo",criticality:"Média",notes:""};
 
-function gSV(s:Supplier,k:ColKey):string|number{switch(k){case"tradeName":return(s.tradeName||s.legalName).toLowerCase();case"legalName":return s.legalName.toLowerCase();case"cnpj":return s.cnpj;case"commercialContact":return(s.commercialContact||"").toLowerCase();case"email":return(s.email||"").toLowerCase();case"phone":return(s.phone||"").toLowerCase();case"contracts":return s._count.contracts;case"criticality":return s.criticality==="Alta"?0:s.criticality==="Média"?1:2;case"status":return s.status.toLowerCase();default:return"";}}
+function gSV(s:Supplier,k:ColKey):string|number{switch(k){case"tradeName":return(s.tradeName||s.legalName).toLowerCase();case"legalName":return s.legalName.toLowerCase();case"cnpj":return s.cnpj;case"responsible":return(s.responsible||"").toLowerCase();case"area":return(s.area||"").toLowerCase();case"phone":return(s.phone||"").toLowerCase();case"contracts":return s._count.contracts;case"criticality":return s.criticality==="Alta"?0:s.criticality==="Média"?1:2;case"status":return s.status.toLowerCase();default:return"";}}
 
 function IGrid(){return<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>;}
 function IDoc(){return<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;}
@@ -40,27 +42,35 @@ function PageContent(){
   const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[form,setForm]=useState(EMPTY);
   const searchParams=useSearchParams();const[search,setSearch]=useState(searchParams.get("search")||"");
   const[toast,setToast]=useState<Toast|null>(null);const[sortCol,setSortCol]=useState<ColKey>("tradeName");const[sortDir,setSortDir]=useState<SortDir>("asc");const[page,setPage]=useState(1);
+  const[filterNoContracts,setFilterNoContracts]=useState(false);
 
   function showToast(m:string,t:"success"|"error"="success"){setToast({message:m,type:t});setTimeout(()=>setToast(null),4000);}
   async function loadData(){setLoading(true);const data=await fetch("/api/suppliers").then(r=>r.json());setSuppliers(data);setLoading(false);}
   useEffect(()=>{loadData();},[]);
 
   function openNew(){setEditingId(null);setForm(EMPTY);setShowForm(true);}
-  function openEdit(s:Supplier){setEditingId(s.id);setForm({legalName:s.legalName,tradeName:s.tradeName||"",cnpj:s.cnpj,email:s.email||"",phone:s.phone||"",commercialContact:s.commercialContact||"",operationalContact:s.operationalContact||"",status:s.status,criticality:s.criticality,notes:s.notes||""});setShowForm(true);window.scrollTo({top:0,behavior:"smooth"});}
+  function openEdit(s:Supplier){setEditingId(s.id);setForm({legalName:s.legalName,tradeName:s.tradeName||"",cnpj:s.cnpj,email:s.email||"",phone:s.phone||"",commercialContact:s.commercialContact||"",operationalContact:s.operationalContact||"",responsible:s.responsible||"",area:s.area||"",status:s.status,criticality:s.criticality,notes:s.notes||""});setShowForm(true);window.scrollTo({top:0,behavior:"smooth"});}
   async function handleSubmit(e:React.FormEvent){e.preventDefault();setSaving(true);try{const url=editingId?`/api/suppliers/${editingId}`:"/api/suppliers";const method=editingId?"PATCH":"POST";const res=await fetch(url,{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(form)});const data=await res.json();if(!res.ok)throw new Error(data.error||"Erro");setForm(EMPTY);setShowForm(false);setEditingId(null);showToast(editingId?`${form.tradeName||form.legalName} atualizado`:`${form.tradeName||form.legalName} cadastrado`);loadData();}catch(err:unknown){const msg=err instanceof Error?err.message:"Erro ao salvar";showToast(msg,"error");}finally{setSaving(false);}}
   async function handleDelete(s:Supplier){if(!confirm(`Excluir ${s.tradeName||s.legalName}?\n\nEssa ação não pode ser desfeita.`))return;try{const res=await fetch(`/api/suppliers/${s.id}`,{method:"DELETE"});const data=await res.json();if(!res.ok)throw new Error(data.error||"Erro");showToast(`${s.tradeName||s.legalName} excluído`);loadData();}catch(err:unknown){const msg=err instanceof Error?err.message:"Erro ao excluir";showToast(msg,"error");}}
   function closeForm(){setShowForm(false);setEditingId(null);setForm(EMPTY);}
   function set(f:string,v:string){setForm(p=>({...p,[f]:v}));}
   function toggleSort(col:ColKey){if(sortCol===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(col);setSortDir("asc");}setPage(1);}
 
-  const filtered=suppliers.filter(s=>{if(!search)return true;const q=search.toLowerCase();return s.legalName.toLowerCase().includes(q)||(s.tradeName||"").toLowerCase().includes(q)||s.cnpj.includes(q)||(s.email||"").toLowerCase().includes(q)||(s.commercialContact||"").toLowerCase().includes(q);});
+  const noContractsCount=suppliers.filter(s=>s._count.contracts===0).length;
+
+  function toggleFilterNoContracts(){setFilterNoContracts(v=>!v);setPage(1);}
+
+  const filtered=suppliers.filter(s=>{
+    if(filterNoContracts&&s._count.contracts>0)return false;
+    if(!search)return true;const q=search.toLowerCase();return s.legalName.toLowerCase().includes(q)||(s.tradeName||"").toLowerCase().includes(q)||s.cnpj.includes(q)||(s.email||"").toLowerCase().includes(q)||(s.commercialContact||"").toLowerCase().includes(q);
+  });
   const sorted=[...filtered].sort((a,b)=>{const va=gSV(a,sortCol);const vb=gSV(b,sortCol);if(va<vb)return sortDir==="asc"?-1:1;if(va>vb)return sortDir==="asc"?1:-1;return 0;});
   const tp=Math.ceil(sorted.length/PER_PAGE);const paged=sorted.slice((page-1)*PER_PAGE,page*PER_PAGE);
   const totalContracts=suppliers.reduce((s,sup)=>s+sup._count.contracts,0);
 
   function exportExcel(){const rows=sorted.map(s=>({razao_social:s.legalName,nome_fantasia:s.tradeName||"",cnpj:s.cnpj,email:s.email||"",telefone:s.phone||"",contato_comercial:s.commercialContact||"",contato_operacional:s.operationalContact||"",criticidade:s.criticality,observacoes:s.notes||"",status:s.status}));const ws=XLSX.utils.json_to_sheet(rows);ws["!cols"]=Object.keys(rows[0]||{}).map(k=>({wch:Math.max(k.length,...rows.map(r=>String((r as Record<string,unknown>)[k]||"").length))+2}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Fornecedores");const buf=XLSX.write(wb,{bookType:"xlsx",type:"array"});saveAs(new Blob([buf],{type:"application/octet-stream"}),`fornecedores_${new Date().toISOString().slice(0,10)}.xlsx`);showToast(`${sorted.length} fornecedores exportados`);}
 
-  const columns:{key:ColKey;label:string}[]=[{key:"tradeName",label:"Nome fantasia"},{key:"legalName",label:"Razão social"},{key:"cnpj",label:"CNPJ"},{key:"commercialContact",label:"Contato comercial"},{key:"email",label:"E-mail"},{key:"phone",label:"Telefone"},{key:"contracts",label:"Contratos"},{key:"criticality",label:"Criticidade"},{key:"status",label:"Status"}];
+  const columns:{key:ColKey;label:string}[]=[{key:"tradeName",label:"Nome fantasia"},{key:"legalName",label:"Razão social"},{key:"cnpj",label:"CNPJ"},{key:"responsible",label:"Responsável T&F"},{key:"area",label:"Área"},{key:"phone",label:"Telefone"},{key:"contracts",label:"Contratos"},{key:"criticality",label:"Criticidade"},{key:"status",label:"Status"}];
 
   return(
     <div style={{display:"flex",minHeight:"100vh"}}>
@@ -70,11 +80,27 @@ function PageContent(){
       <Sidebar active="suppliers"/>
 
       <main style={{flex:1,padding:"28px 32px",overflowX:"auto"}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:14,marginBottom:24}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:14,marginBottom:24}}>
           <KpiCard label="Total de fornecedores" value={String(suppliers.length)} sub={`${suppliers.filter(s=>s.status==="Ativo").length} ativos`} accent="#534AB7"/>
           <KpiCard label="Contratos vinculados" value={String(totalContracts)} sub="Total de contratos" accent="#0F6E56"/>
           <KpiCard label="Criticidade alta" value={String(suppliers.filter(s=>s.criticality==="Alta").length)} sub="Fornecedores críticos" accent="#A32D2D"/>
+          <KpiCard
+            label="Sem contratos"
+            value={String(noContractsCount)}
+            sub={filterNoContracts?"Clique para limpar filtro":"Clique para filtrar"}
+            accent="#854F0B"
+            onClick={toggleFilterNoContracts}
+            active={filterNoContracts}
+          />
         </div>
+
+        {filterNoContracts&&(
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,padding:"8px 14px",background:"#FAEEDA",borderRadius:8,fontSize:"13px",color:"#854F0B",border:"1px solid #F0D68A"}}>
+            <IWrn/>
+            <span>Exibindo apenas fornecedores sem contratos vinculados</span>
+            <button onClick={()=>{setFilterNoContracts(false);setPage(1);}} style={{marginLeft:"auto",background:"none",border:"none",cursor:"pointer",color:"#854F0B",fontWeight:600,fontSize:"13px",textDecoration:"underline"}}>Limpar filtro</button>
+          </div>
+        )}
 
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,gap:12,flexWrap:"wrap"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}><h2 style={{fontSize:"18px",fontWeight:600,margin:0}}>Fornecedores</h2><span style={{fontSize:"12px",color:"#9ca3af",background:"#f1f3f5",padding:"2px 10px",borderRadius:10}}>{sorted.length}</span></div>
@@ -113,10 +139,14 @@ function PageContent(){
                 </G3>
               </FormSection>
 
-              <FormSection icon="tag" title="Classificação" desc="Status e nível de criticidade do fornecedor">
+              <FormSection icon="tag" title="Classificação" desc="Status, criticidade e gestão interna do fornecedor">
                 <G3>
                   <FS label="Status" v={form.status} set={v=>set("status",v)} opts={SO.map(o=>({v:o,l:o}))}/>
                   <FS label="Criticidade" v={form.criticality} set={v=>set("criticality",v)} opts={CO.map(o=>({v:o,l:o}))}/>
+                  <F label="Responsável T&F" v={form.responsible} set={v=>set("responsible",v)} ph="Gestor interno responsável"/>
+                </G3>
+                <G3>
+                  <FS label="Área responsável" v={form.area} set={v=>set("area",v)} opts={AREAS.map(a=>({v:a,l:a}))}/>
                 </G3>
                 <div style={{marginTop:6}}>
                   <label style={fl}>Observações</label>
@@ -134,7 +164,7 @@ function PageContent(){
 
         {loading?(<p style={{color:"#9ca3af",padding:40,textAlign:"center"}}>Carregando...</p>
         ):sorted.length===0?(
-          <div style={{textAlign:"center",padding:"60px 20px",color:"#9ca3af",background:"#fff",border:"1px dashed #e0e2e7",borderRadius:12}}><p style={{fontSize:"15px",margin:"0 0 6px",fontWeight:500}}>{suppliers.length===0?"Nenhum fornecedor cadastrado":"Nenhum resultado"}</p><p style={{fontSize:"13px",margin:0}}>{suppliers.length===0?"Clique em \"+ Novo fornecedor\" para começar":"Tente alterar a busca"}</p></div>
+          <div style={{textAlign:"center",padding:"60px 20px",color:"#9ca3af",background:"#fff",border:"1px dashed #e0e2e7",borderRadius:12}}><p style={{fontSize:"15px",margin:"0 0 6px",fontWeight:500}}>{suppliers.length===0?"Nenhum fornecedor cadastrado":filterNoContracts?"Todos os fornecedores possuem contratos":"Nenhum resultado"}</p><p style={{fontSize:"13px",margin:0}}>{suppliers.length===0?"Clique em \"+ Novo fornecedor\" para começar":filterNoContracts?"Limpe o filtro para ver todos":"Tente alterar a busca"}</p></div>
         ):(<>
           <div style={{background:"#fff",border:"1px solid #e0e2e7",borderRadius:12,overflow:"hidden"}}>
             <div style={{overflowX:"auto"}}>
@@ -148,8 +178,8 @@ function PageContent(){
                     <td style={{...td,fontWeight:600,color:"#1a1a2e"}}>{s.tradeName||"—"}</td>
                     <td style={{...td,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={s.legalName}>{s.legalName}</td>
                     <td style={{...td,fontFamily:"monospace",fontSize:"12px"}}>{s.cnpj}</td>
-                    <td style={td}>{s.commercialContact||"—"}</td><td style={td}>{s.email||"—"}</td><td style={td}>{s.phone||"—"}</td>
-                    <td style={{...td,textAlign:"center"}}><span style={{background:"#f1f3f5",padding:"2px 8px",borderRadius:8,fontSize:"12px",fontWeight:500}}>{s._count.contracts}</span></td>
+                    <td style={td}>{s.responsible||"—"}</td><td style={td}>{s.area?<Badge bg="#EEEDFE" color="#534AB7">{s.area}</Badge>:"—"}</td><td style={td}>{s.phone||"—"}</td>
+                    <td style={{...td,textAlign:"center"}}><span style={{background:s._count.contracts===0?"#FAEEDA":"#f1f3f5",color:s._count.contracts===0?"#854F0B":"inherit",padding:"2px 8px",borderRadius:8,fontSize:"12px",fontWeight:500}}>{s._count.contracts}</span></td>
                     <td style={td}><Badge bg={cr.bg} color={cr.text}>{s.criticality}</Badge></td>
                     <td style={td}><Badge bg={st.bg} color={st.text}>{s.status}</Badge></td>
                     <td style={{...td,whiteSpace:"nowrap"}}><button onClick={()=>openEdit(s)} style={ab} title="Editar"><IEdit/></button><button onClick={()=>handleDelete(s)} style={{...ab,color:"#A32D2D"}} title="Excluir"><ITrash/></button></td>
@@ -177,11 +207,10 @@ function FS({label,v,set,opts}:{label:string;v:string;set:(v:string)=>void;opts:
 function Pag({page,totalPages,total,perPage,onPage}:{page:number;totalPages:number;total:number;perPage:number;onPage:(p:number)=>void}){const from=(page-1)*perPage+1;const to=Math.min(page*perPage,total);return(<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 4px",fontSize:"13px",color:"#6b7280"}}><span>Mostrando {from}-{to} de {total}</span><div style={{display:"flex",gap:4}}><PB onClick={()=>onPage(1)} disabled={page===1}>{"«"}</PB><PB onClick={()=>onPage(page-1)} disabled={page===1}>{"‹"}</PB>{Array.from({length:totalPages},(_,i)=>i+1).filter(p=>p===1||p===totalPages||Math.abs(p-page)<=2).reduce((acc,p,i,arr)=>{if(i>0&&p-arr[i-1]>1)acc.push(-1);acc.push(p);return acc;},[] as number[]).map((p,i)=>p===-1?<span key={`e${i}`} style={{padding:"4px",color:"#bbb"}}>...</span>:<PB key={p} onClick={()=>onPage(p)} active={p===page}>{p}</PB>)}<PB onClick={()=>onPage(page+1)} disabled={page===totalPages}>{"›"}</PB><PB onClick={()=>onPage(totalPages)} disabled={page===totalPages}>{"»"}</PB></div></div>);}
 function PB({children,onClick,disabled,active}:{children:React.ReactNode;onClick:()=>void;disabled?:boolean;active?:boolean}){return<button onClick={onClick} disabled={disabled} style={{padding:"4px 10px",borderRadius:6,border:active?"1px solid #1a1a2e":"1px solid #e0e2e7",background:active?"#1a1a2e":disabled?"#f8f9fb":"#fff",color:active?"#fff":disabled?"#ccc":"#374151",cursor:disabled?"default":"pointer",fontSize:"13px",fontWeight:active?600:400,minWidth:32}}>{children}</button>;}
 function NI({icon,label,active}:{icon:React.ReactNode;label:string;active:boolean}){return<div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,cursor:"pointer",fontSize:"13px",fontWeight:active?500:400,color:active?"#1a1a2e":"#6b7280",background:active?"#f1f3f5":"transparent",marginBottom:2}}>{icon}{label}</div>;}
-function KpiCard({label,value,sub,accent}:{label:string;value:string;sub:string;accent:string}){return<div style={{background:"#fff",border:"1px solid #e0e2e7",borderRadius:12,padding:"18px 20px",borderTop:`3px solid ${accent}`,transition:"transform 0.15s"}} onMouseEnter={e=>(e.currentTarget.style.transform="translateY(-2px)")} onMouseLeave={e=>(e.currentTarget.style.transform="none")}><p style={{fontSize:"12px",color:"#6b7280",margin:"0 0 6px"}}>{label}</p><p style={{fontSize:"22px",fontWeight:700,margin:"0 0 4px",color:"#1a1a2e"}}>{value}</p><p style={{fontSize:"11px",color:"#9ca3af",margin:0}}>{sub}</p></div>;}
+function KpiCard({label,value,sub,accent,onClick,active}:{label:string;value:string;sub:string;accent:string;onClick?:()=>void;active?:boolean}){return<div onClick={onClick} style={{background:active?"#FFFBF0":"#fff",border:`1px solid ${active?"#F0D68A":"#e0e2e7"}`,borderRadius:12,padding:"18px 20px",borderTop:`3px solid ${accent}`,transition:"transform 0.15s, box-shadow 0.15s",cursor:onClick?"pointer":"default",boxShadow:active?"0 0 0 2px rgba(133,79,11,0.15)":"none"}} onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";if(onClick)e.currentTarget.style.boxShadow=`0 4px 12px rgba(0,0,0,0.08)${active?", 0 0 0 2px rgba(133,79,11,0.15)":""}`;}} onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow=active?"0 0 0 2px rgba(133,79,11,0.15)":"none";}}><p style={{fontSize:"12px",color:"#6b7280",margin:"0 0 6px"}}>{label}</p><p style={{fontSize:"22px",fontWeight:700,margin:"0 0 4px",color:"#1a1a2e"}}>{value}</p><p style={{fontSize:"11px",color:active?"#854F0B":"#9ca3af",margin:0,fontWeight:active?500:400}}>{sub}</p></div>;}
 function Badge({bg,color,children}:{bg:string;color:string;children:React.ReactNode}){return<span style={{padding:"3px 10px",borderRadius:10,fontSize:"11px",fontWeight:500,background:bg,color}}>{children}</span>;}
 
 const fl:React.CSSProperties={display:"block",fontSize:"12px",fontWeight:500,color:"#374151",marginBottom:5};
 const fi:React.CSSProperties={width:"100%",padding:"9px 13px",border:"1px solid #e0e2e7",borderRadius:8,fontSize:"13px",boxSizing:"border-box",background:"#fff",color:"#1a1a2e",transition:"border-color 0.2s, box-shadow 0.2s"};
 const td:React.CSSProperties={padding:"11px 10px",color:"#374151"};
 const ab:React.CSSProperties={background:"none",border:"none",cursor:"pointer",padding:"4px 6px",borderRadius:4,color:"#6b7280",display:"inline-flex",alignItems:"center"};
-

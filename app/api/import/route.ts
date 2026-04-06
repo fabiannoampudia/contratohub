@@ -3,13 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
 type RowError = { row: number; field: string; message: string };
-type ValidatedRow = { data: Record<string, string>; errors: RowError[]; rowIndex: number };
+type ValidatedRow = { data: Record<string, string>; errors: RowError[]; rowIndex: number; isUpdate?: boolean };
 
 const SUPPLIER_REQUIRED = ["razao_social", "cnpj"];
 const CONTRACT_REQUIRED = ["numero_contrato", "empresa", "fornecedor_cnpj", "objeto", "data_inicio", "data_termino", "periodicidade_pagamento", "tipo_cobranca", "responsavel"];
 
-const SUPPLIER_FIELDS = ["razao_social", "nome_fantasia", "cnpj", "email", "telefone", "contato_comercial", "contato_operacional", "criticidade", "observacoes"];
-const CONTRACT_FIELDS = ["numero_contrato", "empresa", "fornecedor_cnpj", "objeto", "valor_mensal", "valor_total", "periodicidade_pagamento", "tipo_cobranca", "detalhe_cobranca", "reajuste", "tipo_reajuste", "mes_reajuste", "data_inicio", "data_termino", "aviso_previo_dias", "renovacao_automatica", "responsavel", "mapeamento", "observacoes"];
+const SUPPLIER_FIELDS = ["razao_social", "nome_fantasia", "cnpj", "email", "telefone", "contato_comercial", "contato_operacional", "responsavel_tf", "area_responsavel", "criticidade", "observacoes"];
+const CONTRACT_FIELDS = ["numero_contrato", "empresa", "fornecedor_cnpj", "objeto", "valor_mensal", "valor_total", "periodicidade_pagamento", "tipo_cobranca", "detalhe_cobranca", "reajuste", "tipo_reajuste", "mes_reajuste", "data_inicio", "data_termino", "aviso_previo_dias", "renovacao_automatica", "responsavel", "area_responsavel", "link_arquivo", "observacoes"];
 
 function parseDate(val: unknown): Date | null {
   if (!val) return null;
@@ -77,10 +77,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Buscar dados existentes para validação de duplicidade
     let companies: { id: string; name: string }[] = [];
     let existingSuppliers: { id: string; cnpj: string }[] = [];
-    let existingContracts: { contractNumber: string; companyId: string; company: { name: string } }[] = [];
+    let existingContracts: { id: string; contractNumber: string; companyId: string; company: { name: string } }[] = [];
 
     if (type === "suppliers") {
       existingSuppliers = await prisma.supplier.findMany({ select: { id: true, cnpj: true } });
@@ -90,23 +89,22 @@ export async function POST(request: NextRequest) {
       companies = await prisma.company.findMany({ select: { id: true, name: true } });
       existingSuppliers = await prisma.supplier.findMany({ select: { id: true, cnpj: true } });
       existingContracts = await prisma.contract.findMany({
-        select: { contractNumber: true, companyId: true, company: { select: { name: true } } },
+        select: { id: true, contractNumber: true, companyId: true, company: { select: { name: true } } },
       });
     }
 
-    // Rastrear duplicatas dentro do próprio arquivo
     const seenInFile = new Set<string>();
 
     const validated: ValidatedRow[] = rawData.map((raw, idx) => {
       const row: Record<string, string> = {};
       const errors: RowError[] = [];
       const rowNum = idx + 2;
+      let isUpdate = false;
 
       normalizedHeaders.forEach((nh, i) => {
         row[nh] = String(raw[rawHeaders[i]] ?? "").trim();
       });
 
-      // Validar campos obrigatórios
       requiredFields.forEach(f => {
         if (!row[f] || row[f] === "") {
           errors.push({ row: rowNum, field: f, message: "Campo obrigatório não preenchido" });
@@ -114,25 +112,21 @@ export async function POST(request: NextRequest) {
       });
 
       if (type === "suppliers") {
-        // Validar formato CNPJ
         if (row.cnpj && !validateCNPJ(row.cnpj)) {
           errors.push({ row: rowNum, field: "cnpj", message: "CNPJ deve ter 14 dígitos" });
         }
 
-        // Validar criticidade
         if (row.criticidade && !["Alta", "Média", "Media", "Baixa"].includes(row.criticidade)) {
           errors.push({ row: rowNum, field: "criticidade", message: "Valores válidos: Alta, Média, Baixa" });
         }
 
-        // Duplicidade no banco
         if (row.cnpj) {
           const cnpjClean = row.cnpj.replace(/\D/g, "");
           const existsInDb = existingSuppliers.some(s => s.cnpj.replace(/\D/g, "") === cnpjClean);
           if (existsInDb) {
-            errors.push({ row: rowNum, field: "cnpj", message: "CNPJ já cadastrado no sistema" });
+            isUpdate = true;
           }
 
-          // Duplicidade dentro do próprio arquivo
           if (seenInFile.has(cnpjClean)) {
             errors.push({ row: rowNum, field: "cnpj", message: "CNPJ duplicado neste arquivo" });
           }
@@ -141,7 +135,6 @@ export async function POST(request: NextRequest) {
       }
 
       if (type === "contracts") {
-        // Validar fornecedor existe
         if (row.fornecedor_cnpj) {
           const cnpjClean = row.fornecedor_cnpj.replace(/\D/g, "");
           const found = existingSuppliers.find(s => s.cnpj.replace(/\D/g, "") === cnpjClean);
@@ -150,7 +143,6 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Validar empresa existe
         if (row.empresa) {
           const found = companies.find(c => c.name.toLowerCase() === row.empresa.toLowerCase());
           if (!found) {
@@ -158,7 +150,6 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Validar datas
         if (row.data_inicio) {
           const d = parseDate(raw[headerMap["data_inicio"] || "data_inicio"]);
           if (!d) errors.push({ row: rowNum, field: "data_inicio", message: "Data inválida. Use DD/MM/AAAA" });
@@ -168,7 +159,6 @@ export async function POST(request: NextRequest) {
           if (!d) errors.push({ row: rowNum, field: "data_termino", message: "Data inválida. Use DD/MM/AAAA" });
         }
 
-        // Validar valores numéricos
         if (row.valor_mensal && row.valor_mensal !== "" && isNaN(parseFloat(row.valor_mensal.replace(",", ".")))) {
           errors.push({ row: rowNum, field: "valor_mensal", message: "Valor numérico inválido" });
         }
@@ -176,17 +166,15 @@ export async function POST(request: NextRequest) {
           errors.push({ row: rowNum, field: "valor_total", message: "Valor numérico inválido" });
         }
 
-        // Duplicidade no banco (nº contrato + empresa)
         if (row.numero_contrato && row.empresa) {
           const existsInDb = existingContracts.some(
             c => c.contractNumber.toLowerCase() === row.numero_contrato.toLowerCase()
               && c.company.name.toLowerCase() === row.empresa.toLowerCase()
           );
           if (existsInDb) {
-            errors.push({ row: rowNum, field: "numero_contrato", message: "Contrato já existe para esta empresa" });
+            isUpdate = true;
           }
 
-          // Duplicidade dentro do próprio arquivo
           const fileKey = `${row.numero_contrato.toLowerCase()}|${row.empresa.toLowerCase()}`;
           if (seenInFile.has(fileKey)) {
             errors.push({ row: rowNum, field: "numero_contrato", message: "Contrato duplicado neste arquivo" });
@@ -195,39 +183,50 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return { data: row, errors, rowIndex: rowNum };
+      return { data: row, errors, rowIndex: rowNum, isUpdate };
     });
 
     if (action === "validate") {
       const totalErrors = validated.reduce((s, r) => s + r.errors.length, 0);
       const validRows = validated.filter(r => r.errors.length === 0).length;
       const errorRows = validated.filter(r => r.errors.length > 0).length;
-      return NextResponse.json({ totalRows: validated.length, validRows, errorRows, totalErrors, rows: validated });
+      const updateRows = validated.filter(r => r.errors.length === 0 && r.isUpdate).length;
+      const newRows = validRows - updateRows;
+      return NextResponse.json({ totalRows: validated.length, validRows, errorRows, totalErrors, updateRows, newRows, rows: validated });
     }
 
     if (action === "import") {
       const toImport = validated.filter(r => r.errors.length === 0);
-      let created = 0, skipped = 0, importErrors = 0;
+      let created = 0, updated = 0, importErrors = 0;
 
       if (type === "suppliers") {
         for (const r of toImport) {
           try {
             const cnpjClean = r.data.cnpj.replace(/\D/g, "");
             const formatted = cnpjClean.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
-            await prisma.supplier.create({
-              data: {
-                legalName: r.data.razao_social,
-                tradeName: r.data.nome_fantasia || null,
-                cnpj: formatted,
-                email: r.data.email || null,
-                phone: r.data.telefone || null,
-                commercialContact: r.data.contato_comercial || null,
-                operationalContact: r.data.contato_operacional || null,
-                criticality: r.data.criticidade === "Media" ? "Média" : (r.data.criticidade || "Média"),
-                notes: r.data.observacoes || null,
-              },
-            });
-            created++;
+            const existing = existingSuppliers.find(s => s.cnpj.replace(/\D/g, "") === cnpjClean);
+
+            const data = {
+              legalName: r.data.razao_social,
+              tradeName: r.data.nome_fantasia || null,
+              cnpj: formatted,
+              email: r.data.email || null,
+              phone: r.data.telefone || null,
+              commercialContact: r.data.contato_comercial || null,
+              operationalContact: r.data.contato_operacional || null,
+              responsible: r.data.responsavel_tf || null,
+              area: r.data.area_responsavel || null,
+              criticality: r.data.criticidade === "Media" ? "Média" : (r.data.criticidade || "Média"),
+              notes: r.data.observacoes || null,
+            };
+
+            if (existing) {
+              await prisma.supplier.update({ where: { id: existing.id }, data });
+              updated++;
+            } else {
+              await prisma.supplier.create({ data });
+              created++;
+            }
           } catch { importErrors++; }
         }
       }
@@ -244,37 +243,47 @@ export async function POST(request: NextRequest) {
             const startDate = parseDate(rawRow[headerMap["data_inicio"] || "data_inicio"]);
             const endDate = parseDate(rawRow[headerMap["data_termino"] || "data_termino"]);
 
-            await prisma.contract.create({
-              data: {
-                contractNumber: r.data.numero_contrato,
-                description: r.data.objeto,
-                supplierId: supplier.id,
-                companyId: company.id,
-                unitValue: r.data.valor_mensal ? parseFloat(r.data.valor_mensal.replace(",", ".")) : null,
-                totalValue: r.data.valor_total ? parseFloat(r.data.valor_total.replace(",", ".")) : null,
-                paymentFrequency: r.data.periodicidade_pagamento || null,
-                billingType: r.data.tipo_cobranca || null,
-                billingDetail: r.data.detalhe_cobranca || null,
-                adjustmentIndex: r.data.reajuste || null,
-                adjustmentType: r.data.tipo_reajuste || null,
-                adjustmentMonth: r.data.mes_reajuste ? parseInt(r.data.mes_reajuste) : null,
-                startDate: startDate || new Date(),
-                endDate: endDate || null,
-                noticePeriodDays: r.data.aviso_previo_dias ? parseInt(r.data.aviso_previo_dias) : null,
-                autoRenewal: r.data.renovacao_automatica || null,
-                responsible: r.data.responsavel || null,
-                mapping: r.data.mapeamento || null,
-                notes: r.data.observacoes || null,
-                status: "Novo",
-              },
-            });
-            created++;
+            const data = {
+              contractNumber: r.data.numero_contrato,
+              description: r.data.objeto,
+              supplierId: supplier.id,
+              companyId: company.id,
+              unitValue: r.data.valor_mensal ? parseFloat(r.data.valor_mensal.replace(",", ".")) : null,
+              totalValue: r.data.valor_total ? parseFloat(r.data.valor_total.replace(",", ".")) : null,
+              paymentFrequency: r.data.periodicidade_pagamento || null,
+              billingType: r.data.tipo_cobranca || null,
+              billingDetail: r.data.detalhe_cobranca || null,
+              adjustmentIndex: r.data.reajuste || null,
+              adjustmentType: r.data.tipo_reajuste || null,
+              adjustmentMonth: r.data.mes_reajuste ? parseInt(r.data.mes_reajuste) : null,
+              startDate: startDate || new Date(),
+              endDate: endDate || null,
+              noticePeriodDays: r.data.aviso_previo_dias ? parseInt(r.data.aviso_previo_dias) : null,
+              autoRenewal: r.data.renovacao_automatica || null,
+              responsible: r.data.responsavel || null,
+              area: r.data.area_responsavel || null,
+              fileUrl: r.data.link_arquivo || null,
+              notes: r.data.observacoes || null,
+            };
+
+            const existingContract = existingContracts.find(
+              c => c.contractNumber.toLowerCase() === r.data.numero_contrato.toLowerCase()
+                && c.company.name.toLowerCase() === r.data.empresa.toLowerCase()
+            );
+
+            if (existingContract) {
+              await prisma.contract.update({ where: { id: existingContract.id }, data: { ...data, status: undefined } });
+              updated++;
+            } else {
+              await prisma.contract.create({ data: { ...data, status: "Ativo" } });
+              created++;
+            }
           } catch { importErrors++; }
         }
       }
 
       return NextResponse.json({
-        created, skipped, errors: importErrors,
+        created, updated, errors: importErrors,
         rejected: validated.filter(r => r.errors.length > 0).length,
         total: validated.length,
       });

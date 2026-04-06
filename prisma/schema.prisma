@@ -26,6 +26,8 @@ model Supplier {
   phone              String?
   commercialContact  String?
   operationalContact String?
+  responsible        String?
+  area               String?
   status             String     @default("Ativo")
   criticality        String     @default("Média")
   notes              String?
@@ -53,7 +55,8 @@ model Contract {
   noticePeriodDays   Int?
   status             String    @default("Novo")
   responsible        String?
-  mapping            String?
+  area               String?
+  fileUrl            String?
   billingType        String?
   billingDetail      String?
   autoRenewal        String?

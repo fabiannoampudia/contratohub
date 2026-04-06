@@ -18,6 +18,8 @@ export async function PATCH(
         phone: body.phone || null,
         commercialContact: body.commercialContact || null,
         operationalContact: body.operationalContact || null,
+        responsible: body.responsible || null,
+        area: body.area || null,
         status: body.status || "Ativo",
         criticality: body.criticality || "Média",
         notes: body.notes || null,
